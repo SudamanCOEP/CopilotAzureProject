@@ -1,0 +1,68 @@
+trigger:
+  - main
+  - develop
+
+pr:
+  - main
+  - develop
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  pythonVersion: '3.11'
+  testResultsDirectory: '$(Build.ArtifactStagingDirectory)/test-results'
+
+stages:
+  - stage: Test
+    displayName: 'Run Automation Tests'
+    jobs:
+      - job: PlaywrightPytestTests
+        displayName: 'Execute Playwright & Pytest Tests'
+        steps:
+          
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '$(pythonVersion)'
+              addToPath: true
+            displayName: 'Use Python $(pythonVersion)'
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r requirements.txt
+            workingDirectory: '$(Build.SourcesDirectory)/automation_tests'
+            displayName: 'Install Python Dependencies'
+
+          - script: |
+              playwright install chromium
+              playwright install-deps chromium
+            workingDirectory: '$(Build.SourcesDirectory)/automation_tests'
+            displayName: 'Install Playwright Browsers'
+
+          - script: |
+              mkdir -p $(testResultsDirectory)
+              pytest tests/ -v --junitxml=$(testResultsDirectory)/junit/test-results.xml --html=$(testResultsDirectory)/report.html --self-contained-html
+            workingDirectory: '$(Build.SourcesDirectory)/automation_tests'
+            displayName: 'Run Pytest Tests'
+            continueOnError: true
+
+          - task: PublishTestResults@2
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: '$(testResultsDirectory)/junit/test-results.xml'
+              testRunTitle: 'Playwright Pytest Results'
+              failTaskOnFailedTests: false
+            displayName: 'Publish Test Results'
+            condition: always()
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              pathToPublish: '$(testResultsDirectory)'
+              artifactName: 'test-results'
+            displayName: 'Publish Test Artifacts'
+            condition: always()
+
+          - script: |
+              echo "Test execution completed"
+            displayName: 'Test Summary'
+            condition: always()
